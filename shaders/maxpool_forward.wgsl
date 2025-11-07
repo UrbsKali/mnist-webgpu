@@ -1,12 +1,12 @@
 struct PoolInfo {
-  inWidth : u32;
-  inHeight : u32;
-  channels : u32;
-  window : u32;
-  stride : u32;
-  batch : u32;
-  outWidth : u32;
-  outHeight : u32;
+  inWidth : u32,
+  inHeight : u32,
+  channels : u32,
+  window : u32,
+  stride : u32,
+  batch : u32,
+  outWidth : u32,
+  outHeight : u32
 }
 
 @group(0) @binding(0) var<storage, read> inputTensor : array<f32>;
@@ -29,7 +29,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   let outY = spatialIndex / info.outWidth;
   let outX = spatialIndex % info.outWidth;
 
-  var bestValue : f32 = -3.40282347e+38;
+  var bestValue : f32 = -0x1.fffffep+127;
   var bestIndex : u32 = 0u;
 
   for (var wy : u32 = 0u; wy < info.window; wy = wy + 1u) {

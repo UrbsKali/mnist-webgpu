@@ -1,5 +1,5 @@
 struct PoolBackInfo {
-  total : u32;
+  total : u32
 }
 
 @group(0) @binding(0) var<storage, read> gradOutput : array<f32>;

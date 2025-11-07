@@ -1,10 +1,10 @@
 struct Conv2DBackInputInfo {
-  width : u32;
-  height : u32;
-  inChannels : u32;
-  outChannels : u32;
-  kernelSize : u32;
-  batch : u32;
+  width : u32,
+  height : u32,
+  inChannels : u32,
+  outChannels : u32,
+  kernelSize : u32,
+  batch : u32
 }
 
 @group(0) @binding(0) var<storage, read> gradOutput : array<f32>; // [b, h, w, outC]

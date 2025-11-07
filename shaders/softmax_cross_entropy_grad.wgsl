@@ -1,10 +1,10 @@
 const MAX_CLASSES : u32 = 16u;
 
 struct SoftmaxInfo {
-  batchSize : u32;
-  numClasses : u32;
-  epsilon : f32;
-  _pad : f32;
+  batchSize : u32,
+  numClasses : u32,
+  epsilon : f32,
+  _pad : f32
 }
 
 @group(0) @binding(0) var<storage, read> logits : array<f32>;
@@ -21,7 +21,7 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
     return;
   }
 
-  var maxLogit : f32 = -3.40282347e+38;
+  var maxLogit : f32 = -0x1.fffffep+127;
   let rowOffset = sample * info.numClasses;
   for (var c : u32 = 0u; c < info.numClasses; c = c + 1u) {
     let l = logits[rowOffset + c];

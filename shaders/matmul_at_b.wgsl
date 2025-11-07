@@ -1,7 +1,7 @@
 struct MatMulAtInfo {
-  m : u32; // batch
-  k : u32; // features
-  n : u32; // classes
+  m : u32, // batch
+  k : u32, // features
+  n : u32 // classes
 }
 
 @group(0) @binding(0) var<storage, read> aMatrix : array<f32>; // [m, k]

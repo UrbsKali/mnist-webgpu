@@ -1,11 +1,34 @@
 const shaderCache = new Map();
+const LOG_BUFFERS = (() => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  try {
+    return window.localStorage?.getItem('webgpu-log-buffers') === '1';
+  } catch (err) {
+    return false;
+  }
+})();
+
+export function logBugger(event, details) {
+  if (!LOG_BUFFERS) {
+    return;
+  }
+  try {
+    const stamp = new Date().toISOString();
+  console.debug(`[WebGPU][${stamp}] ${event}`, details);
+  } catch (err) {
+    console.debug(`[WebGPU] ${event}`);
+  }
+}
 
 export async function initWebGPU() {
   if (!navigator.gpu) {
     throw new Error('WebGPU not supported');
   }
 
-  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+  // const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'low-power' });
   if (!adapter) {
     throw new Error('Failed to acquire GPU adapter');
   }
@@ -15,7 +38,40 @@ export async function initWebGPU() {
   });
 
   const queue = device.queue;
+  attachDeviceErrorHandlers(device);
+
   return { adapter, device, queue };
+}
+
+function attachDeviceErrorHandlers(device) {
+  if (typeof device?.addEventListener === 'function') {
+    device.addEventListener('uncapturederror', (event) => {
+      const error = event.error;
+      logBugger('device.uncapturederror', {
+        message: error?.message ?? 'Unknown GPU error',
+        type: error?.constructor?.name ?? 'GPUError',
+        stack: error?.stack,
+      });
+    });
+  }
+
+  if (device?.lost instanceof Promise) {
+    device.lost
+      .then((info) => {
+        if (!info) {
+          return;
+        }
+        logBugger('device.lost', {
+          reason: info.reason,
+          message: info.message,
+        });
+      })
+      .catch((err) => {
+        logBugger('device.lost.handlerError', {
+          message: err?.message ?? String(err),
+        });
+      });
+  }
 }
 
 export async function loadShaderModule(device, url) {
@@ -42,36 +98,189 @@ function getArrayView(arrayLike) {
   throw new Error('Unsupported buffer data type');
 }
 
-export function createBuffer(device, array, usage, label) {
-  const byteLength = array.byteLength ?? getArrayView(array).byteLength;
+export async function createBuffer(device, array, usage, label) {
+  const view = getArrayView(array);
+  const byteLength = view.byteLength;
+  const size = align(byteLength, 4);
+  const finalUsage = usage | GPUBufferUsage.COPY_DST;
   const buffer = device.createBuffer({
     label,
-    size: align(byteLength, 4),
-    usage,
-    mappedAtCreation: true,
+    size,
+    usage: finalUsage,
   });
-  const view = getArrayView(array);
-  new Uint8Array(buffer.getMappedRange()).set(view);
-  buffer.unmap();
+
+  await writeBuffer(device, buffer, view);
+
+  logBugger('createBuffer', {
+    label: buffer.label ?? label ?? '(unnamed)',
+    alignedSize: size,
+    originalSize: byteLength,
+    usage: finalUsage,
+  });
   return buffer;
 }
 
 export function createEmptyBuffer(device, byteLength, usage, label) {
-  return device.createBuffer({
+  const size = align(byteLength, 4);
+  const buffer = device.createBuffer({
     label,
-    size: align(byteLength, 4),
+    size,
     usage,
   });
+  logBugger('createEmptyBuffer', {
+    label: buffer.label ?? label ?? '(unnamed)',
+    size,
+    requestedSize: byteLength,
+    usage,
+  });
+  return buffer;
 }
 
-export function writeBuffer(device, buffer, data, offset = 0) {
+export async function writeBuffer(device, buffer, data, offset = 0) {
   const view = getArrayView(data);
-  device.queue.writeBuffer(buffer, offset, view, 0, view.byteLength);
+  const alignedSize = align(view.byteLength, 4);
+  const label = buffer.label ?? '(unnamed)';
+
+  logBugger('writeBuffer.begin', {
+    label,
+    byteLength: view.byteLength,
+    alignedSize,
+    offset,
+  });
+
+  const copySize = Math.min(alignedSize, Math.max(0, (buffer?.size ?? alignedSize) - offset));
+  if (copySize <= 0) {
+    logBugger('writeBuffer.skip', {
+      label,
+      reason: 'copySize <= 0',
+      requestedSize: alignedSize,
+      offset,
+      bufferSize: buffer?.size ?? null,
+    });
+    return;
+  }
+
+  const copyLength = Math.min(view.byteLength, copySize);
+  if (copyLength < view.byteLength) {
+    logBugger('writeBuffer.truncate', {
+      label,
+      providedBytes: view.byteLength,
+      copyLength,
+      copySize,
+      bufferSize: buffer?.size ?? null,
+      offset,
+    });
+    throw new RangeError('writeBuffer: data length exceeds target buffer capacity');
+  }
+
+  const attemptDirectMap = async () => {
+    const hasMapAsync = typeof buffer?.mapAsync === 'function';
+    const usage = typeof buffer?.usage === 'number' ? buffer.usage : 0;
+    const canMapWrite = (usage & GPUBufferUsage.MAP_WRITE) !== 0;
+
+    if (!hasMapAsync || !canMapWrite) {
+      logBugger('writeBuffer.directMap.skip', {
+        label,
+        hasMapAsync,
+        usage,
+        canMapWrite,
+      });
+      return false;
+    }
+    try {
+      await buffer.mapAsync(GPUMapMode.WRITE, offset, copySize);
+      const mapped = buffer.getMappedRange(offset, copySize);
+      const target = new Uint8Array(mapped);
+      if (copySize > copyLength) {
+        target.fill(0);
+      }
+      target.set(view.subarray(0, copyLength));
+      buffer.unmap();
+      logBugger('writeBuffer.directMap', {
+        label,
+        byteLength: view.byteLength,
+        copySize,
+        offset,
+      });
+      return true;
+    } catch (err) {
+      logBugger('writeBuffer.directMap.fallback', {
+        label,
+        message: err?.message ?? String(err),
+      });
+      return false;
+    }
+  };
+
+  if (await attemptDirectMap()) {
+    return;
+  }
+
+  const stagingBuffer = device.createBuffer({
+    label: `${label}-staging`,
+    size: copySize,
+    usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC,
+  });
+
+  try {
+    await stagingBuffer.mapAsync(GPUMapMode.WRITE);
+  } catch (err) {
+    stagingBuffer.destroy();
+    logBugger('writeBuffer.staging.mapError', {
+      label,
+      message: err?.message ?? String(err),
+    });
+    throw err;
+  }
+
+  const mapped = stagingBuffer.getMappedRange();
+  const target = new Uint8Array(mapped);
+  if (copySize > copyLength) {
+    target.fill(0);
+  }
+  target.set(view.subarray(0, copyLength));
+  stagingBuffer.unmap();
+
+  const encoder = device.createCommandEncoder();
+  encoder.copyBufferToBuffer(stagingBuffer, 0, buffer, offset, copySize);
+  device.queue.submit([encoder.finish()]);
+
+  const completion = device.queue
+    .onSubmittedWorkDone()
+    .then(() => {
+      stagingBuffer.destroy();
+      logBugger('writeBuffer.complete', {
+        label,
+        byteLength: view.byteLength,
+        copySize,
+        offset,
+        path: 'staging-copy',
+      });
+    })
+    .catch((err) => {
+      logBugger('writeBuffer.complete.error', {
+        label,
+        message: err?.message ?? String(err),
+      });
+      stagingBuffer.destroy();
+    });
+
+  // Avoid awaiting completion so callers don't block on GPU work; attach suppression to
+  // keep unhandled rejection warnings away if nobody observes the promise.
+  completion.catch(() => {});
 }
 
 export async function readBufferToArray(device, buffer, constructor, length) {
+  const size = align(constructor.BYTES_PER_ELEMENT * length, 4);
+  logBugger('readBuffer.begin', {
+    label: buffer.label ?? '(unnamed)',
+    byteLength: size,
+    elementType: constructor.name,
+    elementCount: length,
+  });
   const readBuffer = device.createBuffer({
-    size: align(constructor.BYTES_PER_ELEMENT * length, 4),
+    label: `${buffer.label ?? 'temp'}-readback`,
+    size,
     usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
   });
 
@@ -79,22 +288,78 @@ export async function readBufferToArray(device, buffer, constructor, length) {
   commandEncoder.copyBufferToBuffer(buffer, 0, readBuffer, 0, readBuffer.size);
   device.queue.submit([commandEncoder.finish()]);
 
-  await readBuffer.mapAsync(GPUMapMode.READ);
+  await device.queue.onSubmittedWorkDone();
+
+  try {
+    await readBuffer.mapAsync(GPUMapMode.READ);
+  } catch (err) {
+    logBugger('readBuffer.error', {
+      label: buffer.label ?? '(unnamed)',
+      byteLength: size,
+      elementType: constructor.name,
+      elementCount: length,
+      message: err?.message ?? String(err),
+    });
+    readBuffer.destroy();
+    throw err;
+  }
   const copyArray = new constructor(readBuffer.getMappedRange().slice(0));
   readBuffer.unmap();
   readBuffer.destroy();
+  logBugger('readBuffer.complete', {
+    label: buffer.label ?? '(unnamed)',
+    byteLength: copyArray.byteLength ?? size,
+    elementCount: copyArray.length,
+    elementType: constructor.name,
+  });
   return copyArray;
 }
 
-export function createComputePipeline(device, module, entryPoint, bindGroupLayouts, label) {
-  return device.createComputePipeline({
+export async function createComputePipeline(device, descriptor) {
+  const label = descriptor?.label ?? '(unnamed)';
+  device.pushErrorScope('validation');
+  device.pushErrorScope('internal');
+
+  let pipeline;
+  let thrownError = null;
+  try {
+    pipeline = device.createComputePipeline(descriptor);
+  } catch (err) {
+    thrownError = err;
+  }
+
+  const internalError = await device.popErrorScope();
+  const validationError = await device.popErrorScope();
+  const scopeError = validationError ?? internalError;
+
+  if (scopeError) {
+    logBugger('pipeline.error', {
+      label,
+      type: scopeError.constructor?.name ?? 'GPUError',
+      message: scopeError.message ?? String(scopeError),
+      stack: scopeError.stack,
+    });
+  }
+
+  if (thrownError) {
+    logBugger('pipeline.exception', {
+      label,
+      message: thrownError?.message ?? String(thrownError),
+      stack: thrownError?.stack,
+    });
+    throw thrownError;
+  }
+
+  if (scopeError) {
+    throw scopeError;
+  }
+
+  logBugger('pipeline.created', {
     label,
-    layout: device.createPipelineLayout({ bindGroupLayouts }),
-    compute: {
-      module,
-      entryPoint,
-    },
+    entryPoint: descriptor?.compute?.entryPoint,
   });
+
+  return pipeline;
 }
 
 export function createBindGroup(device, layout, entries, label) {

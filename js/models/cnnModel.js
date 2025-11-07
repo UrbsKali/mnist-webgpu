@@ -1,4 +1,4 @@
-import { loadShaderModule, createBuffer, createEmptyBuffer, writeBuffer, readBufferToArray, ceilDiv } from '../wgpu.js';
+import { loadShaderModule, createBuffer, createEmptyBuffer, writeBuffer, readBufferToArray, ceilDiv, createComputePipeline } from '../wgpu.js';
 import { DataConstants } from '../data.js';
 
 const WORKGROUP_128 = 128;
@@ -91,92 +91,92 @@ export class CnnModel {
       loadShaderModule(this.device, 'shaders/conv2d_backprop_filter.wgsl'),
     ]);
 
-    this.pipelines.convForward = this.device.createComputePipeline({
+    this.pipelines.convForward = await createComputePipeline(this.device, {
       label: 'cnn-conv-forward',
       layout: 'auto',
       compute: { module: convModule, entryPoint: 'main' },
     });
-    this.pipelines.reluForward = this.device.createComputePipeline({
+    this.pipelines.reluForward = await createComputePipeline(this.device, {
       label: 'cnn-relu-forward',
       layout: 'auto',
       compute: { module: reluFModule, entryPoint: 'main' },
     });
-    this.pipelines.reluBackward = this.device.createComputePipeline({
+    this.pipelines.reluBackward = await createComputePipeline(this.device, {
       label: 'cnn-relu-backward',
       layout: 'auto',
       compute: { module: reluBModule, entryPoint: 'main' },
     });
-    this.pipelines.poolForward = this.device.createComputePipeline({
+    this.pipelines.poolForward = await createComputePipeline(this.device, {
       label: 'cnn-pool-forward',
       layout: 'auto',
       compute: { module: poolFModule, entryPoint: 'main' },
     });
-    this.pipelines.poolBackward = this.device.createComputePipeline({
+    this.pipelines.poolBackward = await createComputePipeline(this.device, {
       label: 'cnn-pool-backward',
       layout: 'auto',
       compute: { module: poolBModule, entryPoint: 'main' },
     });
-    this.pipelines.flatten = this.device.createComputePipeline({
+    this.pipelines.flatten = await createComputePipeline(this.device, {
       label: 'cnn-flatten',
       layout: 'auto',
       compute: { module: flattenModule, entryPoint: 'main' },
     });
-    this.pipelines.unflatten = this.device.createComputePipeline({
+    this.pipelines.unflatten = await createComputePipeline(this.device, {
       label: 'cnn-unflatten',
       layout: 'auto',
       compute: { module: unflattenModule, entryPoint: 'main' },
     });
-    this.pipelines.denseForward = this.device.createComputePipeline({
+    this.pipelines.denseForward = await createComputePipeline(this.device, {
       label: 'cnn-dense-forward',
       layout: 'auto',
       compute: { module: denseModule, entryPoint: 'main' },
     });
-    this.pipelines.softmax = this.device.createComputePipeline({
+    this.pipelines.softmax = await createComputePipeline(this.device, {
       label: 'cnn-softmax',
       layout: 'auto',
       compute: { module: softmaxModule, entryPoint: 'main' },
     });
-    this.pipelines.gradDenseWeights = this.device.createComputePipeline({
+    this.pipelines.gradDenseWeights = await createComputePipeline(this.device, {
       label: 'cnn-grad-denseW',
       layout: 'auto',
       compute: { module: gradDenseWModule, entryPoint: 'main' },
     });
-    this.pipelines.gradDenseInput = this.device.createComputePipeline({
+    this.pipelines.gradDenseInput = await createComputePipeline(this.device, {
       label: 'cnn-grad-denseInput',
       layout: 'auto',
       compute: { module: gradDenseInputModule, entryPoint: 'main' },
     });
-    this.pipelines.reduce = this.device.createComputePipeline({
+    this.pipelines.reduce = await createComputePipeline(this.device, {
       label: 'cnn-reduce',
       layout: 'auto',
       compute: { module: reduceModule, entryPoint: 'main' },
     });
-    this.pipelines.scale = this.device.createComputePipeline({
+    this.pipelines.scale = await createComputePipeline(this.device, {
       label: 'cnn-scale',
       layout: 'auto',
       compute: { module: scaleModule, entryPoint: 'main' },
     });
-    this.pipelines.sgd = this.device.createComputePipeline({
+    this.pipelines.sgd = await createComputePipeline(this.device, {
       label: 'cnn-sgd',
       layout: 'auto',
       compute: { module: sgdModule, entryPoint: 'main' },
     });
-    this.pipelines.adam = this.device.createComputePipeline({
+    this.pipelines.adam = await createComputePipeline(this.device, {
       label: 'cnn-adam',
       layout: 'auto',
       compute: { module: adamModule, entryPoint: 'main' },
     });
-    this.pipelines.zero = this.device.createComputePipeline({
+    this.pipelines.zero = await createComputePipeline(this.device, {
       label: 'cnn-zero',
       layout: 'auto',
       compute: { module: zeroModule, entryPoint: 'main' },
     });
-    this.pipelines.accuracy = this.device.createComputePipeline({
+    this.pipelines.accuracy = await createComputePipeline(this.device, {
       label: 'cnn-accuracy',
       layout: 'auto',
       compute: { module: accuracyModule, entryPoint: 'main' },
     });
-    this.pipelines.convFilterGrad = this.device.createComputePipeline({
+    this.pipelines.convFilterGrad = await createComputePipeline(this.device, {
       label: 'cnn-conv-filter-grad',
       layout: 'auto',
       compute: { module: convFilterModule, entryPoint: 'main' },
@@ -187,11 +187,7 @@ export class CnnModel {
 
   createUniformBuffer(byteLength, label) {
     const aligned = Math.ceil(byteLength / 16) * 16;
-    return this.device.createBuffer({
-      label,
-      size: aligned,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
+    return createEmptyBuffer(this.device, aligned, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, label);
   }
 
   async initialize({ batchSize, learningRate, optimizer, seed }) {
@@ -207,6 +203,10 @@ export class CnnModel {
     this.beta1Power = this.beta1;
     this.beta2Power = this.beta2;
     this.step = 0;
+
+    this.uniformBuffers = {};
+    this.bindGroups = {};
+    this.zeroBindGroups.clear();
 
     const rng = mulberry32(seed ?? 42);
 
@@ -226,10 +226,30 @@ export class CnnModel {
     }
     const denseBias = new Float32Array(this.classes);
 
-    this.convWeightBuffer = createBuffer(this.device, convWeights, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, 'cnn-convW');
-    this.convBiasBuffer = createBuffer(this.device, convBias, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, 'cnn-convB');
-    this.denseWeightBuffer = createBuffer(this.device, denseWeights, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, 'cnn-denseW');
-    this.denseBiasBuffer = createBuffer(this.device, denseBias, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, 'cnn-denseB');
+    this.convWeightBuffer = await createBuffer(
+      this.device,
+      convWeights,
+      GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+      'cnn-convW',
+    );
+    this.convBiasBuffer = await createBuffer(
+      this.device,
+      convBias,
+      GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+      'cnn-convB',
+    );
+    this.denseWeightBuffer = await createBuffer(
+      this.device,
+      denseWeights,
+      GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+      'cnn-denseW',
+    );
+    this.denseBiasBuffer = await createBuffer(
+      this.device,
+      denseBias,
+      GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+      'cnn-denseB',
+    );
 
     this.gradConvWeightBuffer = createEmptyBuffer(this.device, convWeights.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC, 'cnn-grad-convW');
     this.gradConvBiasBuffer = createEmptyBuffer(this.device, convBias.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC, 'cnn-grad-convB');
@@ -301,7 +321,7 @@ export class CnnModel {
     this.initialized = true;
   }
 
-  updateConvUniform(batch) {
+  async updateConvUniform(batch) {
     const stride = 1;
     const padding = Math.floor(CONV_KERNEL / 2);
     const info = new Uint32Array([
@@ -314,10 +334,10 @@ export class CnnModel {
       padding,
       batch,
     ]);
-    this.queue.writeBuffer(this.uniformBuffers.conv, 0, info);
+    await writeBuffer(this.device, this.uniformBuffers.conv, info);
   }
 
-  updatePoolUniform(batch) {
+  async updatePoolUniform(batch) {
     const info = new Uint32Array([
       INPUT_WIDTH,
       INPUT_HEIGHT,
@@ -328,16 +348,16 @@ export class CnnModel {
       POOL_WIDTH,
       POOL_HEIGHT,
     ]);
-    this.queue.writeBuffer(this.uniformBuffers.poolForward, 0, info);
+    await writeBuffer(this.device, this.uniformBuffers.poolForward, info);
   }
 
-  updatePoolBackwardUniform(batch) {
+  async updatePoolBackwardUniform(batch) {
     const total = batch * this.poolOutputElementsPerSample;
     const info = new Uint32Array([total]);
-    this.queue.writeBuffer(this.uniformBuffers.poolBackward, 0, info);
+    await writeBuffer(this.device, this.uniformBuffers.poolBackward, info);
   }
 
-  updateFlattenUniform(batch) {
+  async updateFlattenUniform(batch) {
     const info = new Uint32Array([
       POOL_WIDTH,
       POOL_HEIGHT,
@@ -345,52 +365,52 @@ export class CnnModel {
       this.denseFeatureCount,
       batch,
     ]);
-    this.queue.writeBuffer(this.uniformBuffers.flatten, 0, info);
-    this.queue.writeBuffer(this.uniformBuffers.unflatten, 0, info);
+    await writeBuffer(this.device, this.uniformBuffers.flatten, info);
+    await writeBuffer(this.device, this.uniformBuffers.unflatten, info);
   }
 
-  updateDenseForwardUniform(batch) {
+  async updateDenseForwardUniform(batch) {
     const info = new Uint32Array([batch, this.classes, this.denseFeatureCount, 0]);
-    this.queue.writeBuffer(this.uniformBuffers.denseForward, 0, info);
+    await writeBuffer(this.device, this.uniformBuffers.denseForward, info);
   }
 
-  updateSoftmaxUniform(batch) {
+  async updateSoftmaxUniform(batch) {
     const info = new Float32Array([batch, this.classes, 1e-7, 0]);
-    this.queue.writeBuffer(this.uniformBuffers.softmax, 0, info);
+    await writeBuffer(this.device, this.uniformBuffers.softmax, info);
   }
 
-  updateGradDenseWeightsUniform(batch) {
+  async updateGradDenseWeightsUniform(batch) {
     const info = new Uint32Array([batch, this.denseFeatureCount, this.classes, 0]);
-    this.queue.writeBuffer(this.uniformBuffers.gradDenseWeights, 0, info);
+    await writeBuffer(this.device, this.uniformBuffers.gradDenseWeights, info);
   }
 
-  updateBackDenseUniform(batch) {
+  async updateBackDenseUniform(batch) {
     const info = new Uint32Array([batch, this.denseFeatureCount, this.classes]);
-    this.queue.writeBuffer(this.uniformBuffers.backDense, 0, info);
+    await writeBuffer(this.device, this.uniformBuffers.backDense, info);
   }
 
-  updateReduceDenseBiasUniform(batch) {
+  async updateReduceDenseBiasUniform(batch) {
     const info = new Uint32Array([batch, this.classes, 0, 0]);
-    this.queue.writeBuffer(this.uniformBuffers.reduceDenseBias, 0, info);
+    await writeBuffer(this.device, this.uniformBuffers.reduceDenseBias, info);
   }
 
-  updateReduceConvBiasUniform(batch) {
+  async updateReduceConvBiasUniform(batch) {
     const samples = batch * INPUT_WIDTH * INPUT_HEIGHT;
     const info = new Uint32Array([samples, CONV_OUT_CHANNELS, 0, 0]);
-    this.queue.writeBuffer(this.uniformBuffers.reduceConvBias, 0, info);
+    await writeBuffer(this.device, this.uniformBuffers.reduceConvBias, info);
   }
 
-  updateScaleUniform(buffer, size, factor) {
+  async updateScaleUniform(buffer, size, factor) {
     const info = new Float32Array([factor, size, 0, 0]);
-    this.queue.writeBuffer(buffer, 0, info);
+    await writeBuffer(this.device, buffer, info);
   }
 
-  updateSgdUniform(buffer, size) {
+  async updateSgdUniform(buffer, size) {
     const info = new Float32Array([this.learningRate, size, 0, 0]);
-    this.queue.writeBuffer(buffer, 0, info);
+    await writeBuffer(this.device, buffer, info);
   }
 
-  updateAdamUniform(buffer, size) {
+  async updateAdamUniform(buffer, size) {
     const info = new Float32Array([
       this.learningRate,
       this.beta1,
@@ -402,17 +422,17 @@ export class CnnModel {
       this.beta2Power,
       size,
     ]);
-    this.queue.writeBuffer(buffer, 0, info);
+    await writeBuffer(this.device, buffer, info);
   }
 
-  updateZeroUniform(size) {
+  async updateZeroUniform(size) {
     const info = new Uint32Array([size]);
-    this.queue.writeBuffer(this.uniformBuffers.zero, 0, info);
+    await writeBuffer(this.device, this.uniformBuffers.zero, info);
   }
 
-  updateAccuracyUniform(batch) {
+  async updateAccuracyUniform(batch) {
     const info = new Uint32Array([batch, this.classes, 0, 0]);
-    this.queue.writeBuffer(this.uniformBuffers.accuracy, 0, info);
+    await writeBuffer(this.device, this.uniformBuffers.accuracy, info);
   }
 
   createBindGroups() {
@@ -676,6 +696,70 @@ export class CnnModel {
     });
   }
 
+  dispose() {
+    const bufferKeys = [
+      'convWeightBuffer',
+      'convBiasBuffer',
+      'denseWeightBuffer',
+      'denseBiasBuffer',
+      'gradConvWeightBuffer',
+      'gradConvBiasBuffer',
+      'gradDenseWeightBuffer',
+      'gradDenseBiasBuffer',
+      'mConvWeightBuffer',
+      'vConvWeightBuffer',
+      'mConvBiasBuffer',
+      'vConvBiasBuffer',
+      'mDenseWeightBuffer',
+      'vDenseWeightBuffer',
+      'mDenseBiasBuffer',
+      'vDenseBiasBuffer',
+      'inputBuffer',
+      'labelBuffer',
+      'convOutputBuffer',
+      'reluOutputBuffer',
+      'poolOutputBuffer',
+      'poolMaskBuffer',
+      'flattenBuffer',
+      'logitsBuffer',
+      'probBuffer',
+      'gradLogitsBuffer',
+      'lossBuffer',
+      'accuracyMaskBuffer',
+      'gradDenseInputBuffer',
+      'gradPoolOutputBuffer',
+      'gradReluOutputBuffer',
+      'gradConvOutputBuffer',
+    ];
+
+    bufferKeys.forEach((key) => {
+      const buffer = this[key];
+      if (buffer?.destroy) {
+        try {
+          buffer.destroy();
+        } catch (err) {
+          console.warn(`Failed to destroy buffer ${buffer.label ?? key}`, err);
+        }
+      }
+      this[key] = null;
+    });
+
+    Object.entries(this.uniformBuffers ?? {}).forEach(([name, buffer]) => {
+      if (buffer?.destroy) {
+        try {
+          buffer.destroy();
+        } catch (err) {
+          console.warn(`Failed to destroy uniform buffer ${buffer.label ?? name}`, err);
+        }
+      }
+    });
+
+    this.uniformBuffers = {};
+    this.bindGroups = {};
+    this.zeroBindGroups?.clear?.();
+    this.initialized = false;
+  }
+
   getZeroBindGroup(buffer) {
     if (!this.zeroBindGroups.has(buffer)) {
       const bindGroup = this.device.createBindGroup({
@@ -690,8 +774,8 @@ export class CnnModel {
     return this.zeroBindGroups.get(buffer);
   }
 
-  encodeForwardPass(encoder, batchSize) {
-    this.updateConvUniform(batchSize);
+  async encodeForwardPass(encoder, batchSize) {
+    await this.updateConvUniform(batchSize);
     let pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.convForward);
     pass.setBindGroup(0, this.bindGroups.convForward);
@@ -704,28 +788,28 @@ export class CnnModel {
     pass.dispatchWorkgroups(ceilDiv(batchSize * this.convOutputElementsPerSample, WORKGROUP_128));
     pass.end();
 
-    this.updatePoolUniform(batchSize);
+    await this.updatePoolUniform(batchSize);
     pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.poolForward);
     pass.setBindGroup(0, this.bindGroups.poolForward);
     pass.dispatchWorkgroups(ceilDiv(batchSize * this.poolOutputElementsPerSample, WORKGROUP_64));
     pass.end();
 
-    this.updateFlattenUniform(batchSize);
+    await this.updateFlattenUniform(batchSize);
     pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.flatten);
     pass.setBindGroup(0, this.bindGroups.flatten);
     pass.dispatchWorkgroups(ceilDiv(batchSize * this.denseFeatureCount, WORKGROUP_128));
     pass.end();
 
-    this.updateDenseForwardUniform(batchSize);
+    await this.updateDenseForwardUniform(batchSize);
     pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.denseForward);
     pass.setBindGroup(0, this.bindGroups.denseForward);
     pass.dispatchWorkgroups(ceilDiv(batchSize * this.classes, WORKGROUP_128));
     pass.end();
 
-    this.updateSoftmaxUniform(batchSize);
+    await this.updateSoftmaxUniform(batchSize);
     pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.softmax);
     pass.setBindGroup(0, this.bindGroups.softmax);
@@ -733,15 +817,15 @@ export class CnnModel {
     pass.end();
   }
 
-  encodeBackwardPass(encoder, batchSize) {
-    this.updateGradDenseWeightsUniform(batchSize);
+  async encodeBackwardPass(encoder, batchSize) {
+    await this.updateGradDenseWeightsUniform(batchSize);
     let pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.gradDenseWeights);
     pass.setBindGroup(0, this.bindGroups.gradDenseWeights);
     pass.dispatchWorkgroups(ceilDiv(this.denseWeightCount, WORKGROUP_128));
     pass.end();
 
-    this.updateReduceDenseBiasUniform(batchSize);
+    await this.updateReduceDenseBiasUniform(batchSize);
     pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.reduce);
     pass.setBindGroup(0, this.bindGroups.reduceDenseBias);
@@ -749,21 +833,21 @@ export class CnnModel {
     pass.end();
 
     const scaleFactor = 1 / batchSize;
-    this.updateScaleUniform(this.uniformBuffers.scaleDenseWeights, this.denseWeightCount, scaleFactor);
+    await this.updateScaleUniform(this.uniformBuffers.scaleDenseWeights, this.denseWeightCount, scaleFactor);
     pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.scale);
     pass.setBindGroup(0, this.bindGroups.scaleGradDenseWeights);
     pass.dispatchWorkgroups(ceilDiv(this.denseWeightCount, WORKGROUP_128));
     pass.end();
 
-    this.updateScaleUniform(this.uniformBuffers.scaleDenseBias, this.classes, scaleFactor);
+    await this.updateScaleUniform(this.uniformBuffers.scaleDenseBias, this.classes, scaleFactor);
     pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.scale);
     pass.setBindGroup(0, this.bindGroups.scaleGradDenseBias);
     pass.dispatchWorkgroups(ceilDiv(this.classes, WORKGROUP_128));
     pass.end();
 
-    this.updateBackDenseUniform(batchSize);
+    await this.updateBackDenseUniform(batchSize);
     pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.gradDenseInput);
     pass.setBindGroup(0, this.bindGroups.gradDenseInput);
@@ -776,14 +860,14 @@ export class CnnModel {
     pass.dispatchWorkgroups(ceilDiv(batchSize * this.poolOutputElementsPerSample, WORKGROUP_128));
     pass.end();
 
-    this.updateZeroUniform(batchSize * this.convOutputElementsPerSample);
+    await this.updateZeroUniform(batchSize * this.convOutputElementsPerSample);
     pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.zero);
     pass.setBindGroup(0, this.getZeroBindGroup(this.gradReluOutputBuffer));
     pass.dispatchWorkgroups(ceilDiv(batchSize * this.convOutputElementsPerSample, WORKGROUP_128));
     pass.end();
 
-    this.updatePoolBackwardUniform(batchSize);
+    await this.updatePoolBackwardUniform(batchSize);
     pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.poolBackward);
     pass.setBindGroup(0, this.bindGroups.poolBackward);
@@ -796,28 +880,28 @@ export class CnnModel {
     pass.dispatchWorkgroups(ceilDiv(batchSize * this.convOutputElementsPerSample, WORKGROUP_128));
     pass.end();
 
-    this.updateConvUniform(batchSize);
+    await this.updateConvUniform(batchSize);
     pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.convFilterGrad);
     pass.setBindGroup(0, this.bindGroups.convFilterGrad);
     pass.dispatchWorkgroups(ceilDiv(this.convWeightCount, WORKGROUP_64));
     pass.end();
 
-    this.updateReduceConvBiasUniform(batchSize);
+    await this.updateReduceConvBiasUniform(batchSize);
     pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.reduce);
     pass.setBindGroup(0, this.bindGroups.reduceConvBias);
     pass.dispatchWorkgroups(ceilDiv(CONV_OUT_CHANNELS, WORKGROUP_64));
     pass.end();
 
-    this.updateScaleUniform(this.uniformBuffers.scaleConvWeights, this.convWeightCount, scaleFactor);
+    await this.updateScaleUniform(this.uniformBuffers.scaleConvWeights, this.convWeightCount, scaleFactor);
     pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.scale);
     pass.setBindGroup(0, this.bindGroups.scaleGradConvWeights);
     pass.dispatchWorkgroups(ceilDiv(this.convWeightCount, WORKGROUP_128));
     pass.end();
 
-    this.updateScaleUniform(this.uniformBuffers.scaleConvBias, CONV_OUT_CHANNELS, scaleFactor);
+    await this.updateScaleUniform(this.uniformBuffers.scaleConvBias, CONV_OUT_CHANNELS, scaleFactor);
     pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.scale);
     pass.setBindGroup(0, this.bindGroups.scaleGradConvBias);
@@ -825,28 +909,28 @@ export class CnnModel {
     pass.end();
 
     if (this.optimizer === 'sgd') {
-      this.updateSgdUniform(this.uniformBuffers.sgdDenseWeights, this.denseWeightCount);
+      await this.updateSgdUniform(this.uniformBuffers.sgdDenseWeights, this.denseWeightCount);
       pass = encoder.beginComputePass();
       pass.setPipeline(this.pipelines.sgd);
       pass.setBindGroup(0, this.bindGroups.sgdDenseWeights);
       pass.dispatchWorkgroups(ceilDiv(this.denseWeightCount, WORKGROUP_128));
       pass.end();
 
-      this.updateSgdUniform(this.uniformBuffers.sgdDenseBias, this.classes);
+      await this.updateSgdUniform(this.uniformBuffers.sgdDenseBias, this.classes);
       pass = encoder.beginComputePass();
       pass.setPipeline(this.pipelines.sgd);
       pass.setBindGroup(0, this.bindGroups.sgdDenseBias);
       pass.dispatchWorkgroups(ceilDiv(this.classes, WORKGROUP_128));
       pass.end();
 
-      this.updateSgdUniform(this.uniformBuffers.sgdConvWeights, this.convWeightCount);
+      await this.updateSgdUniform(this.uniformBuffers.sgdConvWeights, this.convWeightCount);
       pass = encoder.beginComputePass();
       pass.setPipeline(this.pipelines.sgd);
       pass.setBindGroup(0, this.bindGroups.sgdConvWeights);
       pass.dispatchWorkgroups(ceilDiv(this.convWeightCount, WORKGROUP_128));
       pass.end();
 
-      this.updateSgdUniform(this.uniformBuffers.sgdConvBias, CONV_OUT_CHANNELS);
+      await this.updateSgdUniform(this.uniformBuffers.sgdConvBias, CONV_OUT_CHANNELS);
       pass = encoder.beginComputePass();
       pass.setPipeline(this.pipelines.sgd);
       pass.setBindGroup(0, this.bindGroups.sgdConvBias);
@@ -857,28 +941,28 @@ export class CnnModel {
       this.beta1Power *= this.beta1;
       this.beta2Power *= this.beta2;
 
-      this.updateAdamUniform(this.uniformBuffers.adamDenseWeights, this.denseWeightCount);
+      await this.updateAdamUniform(this.uniformBuffers.adamDenseWeights, this.denseWeightCount);
       pass = encoder.beginComputePass();
       pass.setPipeline(this.pipelines.adam);
       pass.setBindGroup(0, this.bindGroups.adamDenseWeights);
       pass.dispatchWorkgroups(ceilDiv(this.denseWeightCount, WORKGROUP_128));
       pass.end();
 
-      this.updateAdamUniform(this.uniformBuffers.adamDenseBias, this.classes);
+      await this.updateAdamUniform(this.uniformBuffers.adamDenseBias, this.classes);
       pass = encoder.beginComputePass();
       pass.setPipeline(this.pipelines.adam);
       pass.setBindGroup(0, this.bindGroups.adamDenseBias);
       pass.dispatchWorkgroups(ceilDiv(this.classes, WORKGROUP_128));
       pass.end();
 
-      this.updateAdamUniform(this.uniformBuffers.adamConvWeights, this.convWeightCount);
+      await this.updateAdamUniform(this.uniformBuffers.adamConvWeights, this.convWeightCount);
       pass = encoder.beginComputePass();
       pass.setPipeline(this.pipelines.adam);
       pass.setBindGroup(0, this.bindGroups.adamConvWeights);
       pass.dispatchWorkgroups(ceilDiv(this.convWeightCount, WORKGROUP_128));
       pass.end();
 
-      this.updateAdamUniform(this.uniformBuffers.adamConvBias, CONV_OUT_CHANNELS);
+      await this.updateAdamUniform(this.uniformBuffers.adamConvBias, CONV_OUT_CHANNELS);
       pass = encoder.beginComputePass();
       pass.setPipeline(this.pipelines.adam);
       pass.setBindGroup(0, this.bindGroups.adamConvBias);
@@ -887,8 +971,8 @@ export class CnnModel {
     }
   }
 
-  encodeAccuracyPass(encoder, batchSize) {
-    this.updateAccuracyUniform(batchSize);
+  async encodeAccuracyPass(encoder, batchSize) {
+    await this.updateAccuracyUniform(batchSize);
     const pass = encoder.beginComputePass();
     pass.setPipeline(this.pipelines.accuracy);
     pass.setBindGroup(0, this.bindGroups.accuracy);
@@ -901,13 +985,13 @@ export class CnnModel {
       throw new Error('Model not initialized');
     }
 
-    this.queue.writeBuffer(this.inputBuffer, 0, batchImages);
-    this.queue.writeBuffer(this.labelBuffer, 0, batchLabels);
+    await writeBuffer(this.device, this.inputBuffer, batchImages);
+    await writeBuffer(this.device, this.labelBuffer, batchLabels);
 
     const encoder = this.device.createCommandEncoder();
-    this.encodeForwardPass(encoder, batchSize);
-    this.encodeBackwardPass(encoder, batchSize);
-    this.encodeAccuracyPass(encoder, batchSize);
+    await this.encodeForwardPass(encoder, batchSize);
+    await this.encodeBackwardPass(encoder, batchSize);
+    await this.encodeAccuracyPass(encoder, batchSize);
     this.device.queue.submit([encoder.finish()]);
 
     const losses = await readBufferToArray(this.device, this.lossBuffer, Float32Array, batchSize);
@@ -929,12 +1013,12 @@ export class CnnModel {
   }
 
   async forwardEvaluate(batchImages, batchLabels, batchSize) {
-    this.queue.writeBuffer(this.inputBuffer, 0, batchImages);
-    this.queue.writeBuffer(this.labelBuffer, 0, batchLabels);
+    await writeBuffer(this.device, this.inputBuffer, batchImages);
+    await writeBuffer(this.device, this.labelBuffer, batchLabels);
 
     const encoder = this.device.createCommandEncoder();
-    this.encodeForwardPass(encoder, batchSize);
-    this.encodeAccuracyPass(encoder, batchSize);
+    await this.encodeForwardPass(encoder, batchSize);
+    await this.encodeAccuracyPass(encoder, batchSize);
     this.device.queue.submit([encoder.finish()]);
 
     const losses = await readBufferToArray(this.device, this.lossBuffer, Float32Array, batchSize);
@@ -1039,34 +1123,34 @@ export class CnnModel {
       throw new Error('Invalid dense parameter dimensions');
     }
 
-    writeBuffer(this.device, this.convWeightBuffer, new Float32Array(state.convWeights));
-    writeBuffer(this.device, this.convBiasBuffer, new Float32Array(state.convBias));
-    writeBuffer(this.device, this.denseWeightBuffer, new Float32Array(state.denseWeights));
-    writeBuffer(this.device, this.denseBiasBuffer, new Float32Array(state.denseBias));
+    await writeBuffer(this.device, this.convWeightBuffer, new Float32Array(state.convWeights));
+    await writeBuffer(this.device, this.convBiasBuffer, new Float32Array(state.convBias));
+    await writeBuffer(this.device, this.denseWeightBuffer, new Float32Array(state.denseWeights));
+    await writeBuffer(this.device, this.denseBiasBuffer, new Float32Array(state.denseBias));
 
     if (state.mConvWeights && state.mConvWeights.length === this.convWeightCount) {
-      writeBuffer(this.device, this.mConvWeightBuffer, new Float32Array(state.mConvWeights));
+      await writeBuffer(this.device, this.mConvWeightBuffer, new Float32Array(state.mConvWeights));
     }
     if (state.vConvWeights && state.vConvWeights.length === this.convWeightCount) {
-      writeBuffer(this.device, this.vConvWeightBuffer, new Float32Array(state.vConvWeights));
+      await writeBuffer(this.device, this.vConvWeightBuffer, new Float32Array(state.vConvWeights));
     }
     if (state.mConvBias && state.mConvBias.length === CONV_OUT_CHANNELS) {
-      writeBuffer(this.device, this.mConvBiasBuffer, new Float32Array(state.mConvBias));
+      await writeBuffer(this.device, this.mConvBiasBuffer, new Float32Array(state.mConvBias));
     }
     if (state.vConvBias && state.vConvBias.length === CONV_OUT_CHANNELS) {
-      writeBuffer(this.device, this.vConvBiasBuffer, new Float32Array(state.vConvBias));
+      await writeBuffer(this.device, this.vConvBiasBuffer, new Float32Array(state.vConvBias));
     }
     if (state.mDenseWeights && state.mDenseWeights.length === this.denseWeightCount) {
-      writeBuffer(this.device, this.mDenseWeightBuffer, new Float32Array(state.mDenseWeights));
+      await writeBuffer(this.device, this.mDenseWeightBuffer, new Float32Array(state.mDenseWeights));
     }
     if (state.vDenseWeights && state.vDenseWeights.length === this.denseWeightCount) {
-      writeBuffer(this.device, this.vDenseWeightBuffer, new Float32Array(state.vDenseWeights));
+      await writeBuffer(this.device, this.vDenseWeightBuffer, new Float32Array(state.vDenseWeights));
     }
     if (state.mDenseBias && state.mDenseBias.length === this.classes) {
-      writeBuffer(this.device, this.mDenseBiasBuffer, new Float32Array(state.mDenseBias));
+      await writeBuffer(this.device, this.mDenseBiasBuffer, new Float32Array(state.mDenseBias));
     }
     if (state.vDenseBias && state.vDenseBias.length === this.classes) {
-      writeBuffer(this.device, this.vDenseBiasBuffer, new Float32Array(state.vDenseBias));
+      await writeBuffer(this.device, this.vDenseBiasBuffer, new Float32Array(state.vDenseBias));
     }
 
     this.optimizer = state.optimizer ?? this.optimizer;

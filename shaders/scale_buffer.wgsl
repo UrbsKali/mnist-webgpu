@@ -1,8 +1,8 @@
 struct ScaleInfo {
-  factor : f32;
-  size : u32;
-  _pad0 : f32;
-  _pad1 : f32;
+  factor : f32,
+  size : u32,
+  _pad0 : f32,
+  _pad1 : f32
 }
 
 @group(0) @binding(0) var<storage, read_write> bufferData : array<f32>;

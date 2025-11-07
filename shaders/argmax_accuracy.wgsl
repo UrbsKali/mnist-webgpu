@@ -1,6 +1,6 @@
 struct AccuracyInfo {
-  batchSize : u32;
-  numClasses : u32;
+  batchSize : u32,
+  numClasses : u32
 }
 
 @group(0) @binding(0) var<storage, read> probabilities : array<f32>;

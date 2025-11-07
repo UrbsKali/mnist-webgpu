@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebGPU Shader Debugger</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    header {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 1.5rem;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 3rem;
+    }
+    h1 {
+      margin: 0 0 0.25rem;
+      font-size: 2rem;
+      font-weight: 600;
+    }
+    p.lead {
+      margin: 0;
+      color: #94a3b8;
+      font-size: 0.95rem;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+    }
+    button {
+      border: none;
+      background: #0f766e;
+      color: white;
+      padding: 0.55rem 1rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 600;
+      transition: background 0.15s ease-in-out;
+    }
+    button:hover {
+      background: #0d5f59;
+    }
+    button:disabled {
+      background: #94a3b8;
+      cursor: progress;
+    }
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-weight: 600;
+      padding: 0.25rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+    }
+    .status-pending { background: #e2e8f0; color: #334155; }
+    .status-running { background: #fee2e2; color: #b91c1c; }
+    .status-pass { background: #bbf7d0; color: #166534; }
+    .status-fail { background: #fecdd3; color: #9f1239; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 0.75rem;
+      overflow: hidden;
+      box-shadow: 0 10px 25px -20px rgba(15, 23, 42, 0.4);
+    }
+    thead {
+      background: #e2e8f0;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.76rem;
+      color: #475569;
+    }
+    th, td {
+      padding: 0.85rem 1rem;
+      vertical-align: top;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+    td.actions {
+      width: 120px;
+      text-align: right;
+    }
+    .details {
+      font-family: "Fira Code", "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      color: #475569;
+    }
+    .summary {
+      margin-top: 0.35rem;
+      font-size: 0.85rem;
+      color: #64748b;
+    }
+    .lr-debug {
+      margin-top: 2.5rem;
+    }
+    .lr-debug h2 {
+      font-size: 1.35rem;
+      margin: 0 0 0.5rem;
+      font-weight: 600;
+      color: #0f172a;
+    }
+    .lr-controls {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      margin: 1rem 0;
+    }
+    .lr-controls label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      font-size: 0.9rem;
+      color: #475569;
+    }
+    .lr-controls select {
+      border: 1px solid #cbd5f5;
+      border-radius: 0.5rem;
+      padding: 0.45rem 0.65rem;
+      font-size: 0.95rem;
+      background: white;
+      color: #0f172a;
+    }
+    .stage-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1rem;
+    }
+    .stage-card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.75rem;
+      padding: 1rem;
+      box-shadow: 0 12px 26px -22px rgba(15, 23, 42, 0.6);
+    }
+    .stage-card.pass {
+      border-color: #bbf7d0;
+    }
+    .stage-card.fail {
+      border-color: #fecdd3;
+    }
+    .stage-card h3 {
+      margin: 0 0 0.4rem;
+      font-size: 1rem;
+      color: #0f172a;
+    }
+    .stage-card .message {
+      font-size: 0.85rem;
+      color: #475569;
+      margin-bottom: 0.7rem;
+    }
+    .stage-card.fail .message {
+      color: #b91c1c;
+    }
+    .stage-card ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 0.4rem;
+      font-family: "Fira Code", "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 0.75rem;
+      color: #334155;
+      word-break: break-word;
+    }
+    @media (max-width: 820px) {
+      th, td { padding: 0.75rem; }
+      td.actions { width: 90px; }
+      button { width: 100%; }
+      .toolbar { flex-direction: column; align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>WebGPU Shader Debugger</h1>
+    <p class="lead">Run synthetic unit tests against individual compute shaders to validate math and buffer bindings.</p>
+  </header>
+  <main>
+    <div class="toolbar">
+      <button id="run-all">Run All Tests</button>
+      <span id="device-status" class="summary">GPU device not initialized.</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Shader</th>
+          <th>Description</th>
+          <th>Status</th>
+          <th>Details</th>
+          <th class="actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="shader-test-body"></tbody>
+    </table>
+    <section class="lr-debug">
+      <h2>Logistic Regression Stage Debugger</h2>
+      <p id="lr-debug-summary" class="summary">Select a stage and optimizer, then run to inspect intermediate buffers.</p>
+      <div class="lr-controls">
+        <label for="lr-step-select">
+          Stage
+          <select id="lr-step-select" name="lr-step-select"></select>
+        </label>
+        <label for="lr-optimizer-select">
+          Optimizer
+          <select id="lr-optimizer-select" name="lr-optimizer-select">
+            <option value="adam">Adam</option>
+            <option value="sgd">SGD</option>
+          </select>
+        </label>
+        <button type="button" id="lr-run">Run Stage Debug</button>
+      </div>
+      <div id="lr-stage-results" class="stage-grid"></div>
+    </section>
+  </main>
+  <script type="module" src="js/shaderDebug.js"></script>
+</body>
+</html>

@@ -1,13 +1,13 @@
 struct AdamInfo {
-  learningRate : f32;
-  beta1 : f32;
-  beta2 : f32;
-  epsilon : f32;
-  oneMinusBeta1 : f32;
-  oneMinusBeta2 : f32;
-  beta1Power : f32;
-  beta2Power : f32;
-  size : u32;
+  learningRate : f32,
+  beta1 : f32,
+  beta2 : f32,
+  epsilon : f32,
+  oneMinusBeta1 : f32,
+  oneMinusBeta2 : f32,
+  beta1Power : f32,
+  beta2Power : f32,
+  size : u32
 }
 
 @group(0) @binding(0) var<storage, read_write> params : array<f32>;

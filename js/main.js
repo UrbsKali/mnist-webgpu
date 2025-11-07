@@ -10,7 +10,7 @@ const state = {
   queue: null,
   data: new MNISTData(),
   dataLoaded: false,
-  datasetConfig: { trainSamples: 20000, testSamples: 5000 },
+  datasetConfig: { trainSamples: 2000, testSamples: 500 },
   models: {},
   currentModelKey: 'lr',
   hyperparams: {},
@@ -32,6 +32,9 @@ const state = {
   inferenceBusy: false,
   predictionScheduled: false,
 };
+
+let cleanupHandlersRegistered = false;
+let cleanupExecuted = false;
 
 const callbacks = {
   onModelChange: handleModelChange,
@@ -63,9 +66,11 @@ async function bootstrap() {
   try {
     const { device, queue } = await initWebGPU();
     state.device = device;
+    console.log('WebGPU initialized:', device);
     state.queue = queue;
     state.models.lr = new LogisticRegressionModel(device);
     state.models.cnn = new CnnModel(device);
+  registerLifecycleHandlers();
 
     await loadDataset(state.datasetConfig, true);
     await Promise.all([state.models.lr.compile(), state.models.cnn.compile()]);
@@ -178,6 +183,13 @@ function resetTrainingState() {
   state.training.epoch = 0;
   state.training.totalEpochs = 0;
   state.training.batchCounter = 0;
+  if (state.ui) {
+    state.ui.setEpoch(0);
+    state.ui.setBatch(0);
+    state.ui.setLoss(0);
+    state.ui.setAccuracy(0);
+    state.ui.setThroughput(0);
+  }
 }
 
 async function handleStartTraining(customEpochs) {
@@ -229,6 +241,12 @@ async function handleStartTraining(customEpochs) {
   state.training.batchCounter = 0;
   state.training.epoch = 0;
   state.ui.setStatus('Training started.');
+  const batchesPerEpoch = Math.ceil(state.data.trainSize / storedHyper.batchSize);
+  state.ui.setEpoch(`0/${totalEpochs}`);
+  state.ui.setBatch(`0/${batchesPerEpoch}`);
+  state.ui.setLoss(0);
+  state.ui.setAccuracy(0);
+  state.ui.setThroughput(0);
   runTrainingLoop(totalEpochs).catch((err) => {
     console.error(err);
     state.ui.setStatus('Training failed. See console.');
@@ -269,6 +287,8 @@ async function runTrainingLoop(totalEpochs) {
         state.batchScratch.trainLabels,
       );
 
+      console.log(`Training epoch ${epochIndex + 1}, batch ${batchIndex + 1} / ${batchesPerEpoch} (size ${size})`);
+
       const t0 = performance.now();
       // eslint-disable-next-line no-await-in-loop
       const metrics = await model.trainBatch(images, labels, size);
@@ -280,12 +300,16 @@ async function runTrainingLoop(totalEpochs) {
       state.training.batchCounter += 1;
 
       const throughput = size / (dt / 1000 || 1);
-      state.ui.setEpoch(epochIndex + 1);
-      state.ui.setBatch(batchIndex + 1);
+      state.ui.setEpoch(`${epochIndex + 1}/${totalEpochs}`);
+      state.ui.setBatch(`${batchIndex + 1}/${batchesPerEpoch}`);
       state.ui.setLoss(metrics.loss);
       state.ui.setAccuracy(metrics.accuracy);
       state.ui.setThroughput(throughput);
       state.ui.addLossPoint(state.training.batchCounter, metrics.loss);
+
+      // Allow the UI and event loop to breathe between batches.
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(0);
     }
 
     const epochLossAvg = epochLoss / Math.max(epochSamples, 1);
@@ -497,3 +521,51 @@ function sleep(ms) {
 }
 
 window.addEventListener('DOMContentLoaded', bootstrap);
+
+function cleanupWebGPU() {
+  if (cleanupExecuted) {
+    return;
+  }
+  cleanupExecuted = true;
+
+  state.training.cancelRequested = true;
+  state.training.running = false;
+  state.training.paused = false;
+
+  Object.values(state.models).forEach((model) => {
+    if (typeof model?.dispose === 'function') {
+      try {
+        model.dispose();
+      } catch (err) {
+        console.warn('Failed to dispose model', err);
+      }
+    }
+  });
+
+  state.batchScratch.trainImages = null;
+  state.batchScratch.trainLabels = null;
+  state.batchScratch.testImages = null;
+  state.batchScratch.testLabels = null;
+
+  if (typeof state.device?.destroy === 'function') {
+    try {
+      state.device.destroy();
+    } catch (err) {
+      console.warn('Failed to destroy GPU device', err);
+    }
+  }
+
+  state.device = null;
+  state.queue = null;
+}
+
+function registerLifecycleHandlers() {
+  if (cleanupHandlersRegistered) {
+    return;
+  }
+
+  const handler = () => cleanupWebGPU();
+  window.addEventListener('pagehide', handler);
+  window.addEventListener('beforeunload', handler);
+  cleanupHandlersRegistered = true;
+}
