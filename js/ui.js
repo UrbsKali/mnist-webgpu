@@ -393,9 +393,10 @@ export function initUI(callbacks) {
       charts.testAcc.update('none');
     },
     updateProbabilities(probs) {
-      charts.probs.data.datasets[0].data = Array.from(probs);
+      const values = Array.from(probs);
+      charts.probs.data.datasets[0].data = values;
       charts.probs.update('none');
-      const top = probs
+      const top = values
         .map((value, index) => ({ value, index }))
         .sort((a, b) => b.value - a.value)
         .slice(0, 3);

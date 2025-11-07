@@ -111,30 +111,30 @@
       font-size: 0.85rem;
       color: #64748b;
     }
-    .lr-debug {
+    .debug-section {
       margin-top: 2.5rem;
     }
-    .lr-debug h2 {
+    .debug-section h2 {
       font-size: 1.35rem;
       margin: 0 0 0.5rem;
       font-weight: 600;
       color: #0f172a;
     }
-    .lr-controls {
+    .debug-controls {
       display: flex;
       gap: 1rem;
       align-items: flex-end;
       flex-wrap: wrap;
       margin: 1rem 0;
     }
-    .lr-controls label {
+    .debug-controls label {
       display: flex;
       flex-direction: column;
       gap: 0.3rem;
       font-size: 0.9rem;
       color: #475569;
     }
-    .lr-controls select {
+    .debug-controls select {
       border: 1px solid #cbd5f5;
       border-radius: 0.5rem;
       padding: 0.45rem 0.65rem;
@@ -214,10 +214,10 @@
       </thead>
       <tbody id="shader-test-body"></tbody>
     </table>
-    <section class="lr-debug">
+    <section class="debug-section">
       <h2>Logistic Regression Stage Debugger</h2>
       <p id="lr-debug-summary" class="summary">Select a stage and optimizer, then run to inspect intermediate buffers.</p>
-      <div class="lr-controls">
+      <div class="debug-controls">
         <label for="lr-step-select">
           Stage
           <select id="lr-step-select" name="lr-step-select"></select>
@@ -232,6 +232,25 @@
         <button type="button" id="lr-run">Run Stage Debug</button>
       </div>
       <div id="lr-stage-results" class="stage-grid"></div>
+    </section>
+    <section class="debug-section">
+      <h2>Convolutional Network Stage Debugger</h2>
+      <p id="cnn-debug-summary" class="summary">Replay forward and backward passes step-by-step to spot failing kernels.</p>
+      <div class="debug-controls">
+        <label for="cnn-step-select">
+          Stage
+          <select id="cnn-step-select" name="cnn-step-select"></select>
+        </label>
+        <label for="cnn-optimizer-select">
+          Optimizer
+          <select id="cnn-optimizer-select" name="cnn-optimizer-select">
+            <option value="adam">Adam</option>
+            <option value="sgd">SGD</option>
+          </select>
+        </label>
+        <button type="button" id="cnn-run">Run Stage Debug</button>
+      </div>
+      <div id="cnn-stage-results" class="stage-grid"></div>
     </section>
   </main>
   <script type="module" src="js/shaderDebug.js"></script>

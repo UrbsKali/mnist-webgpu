@@ -15,6 +15,25 @@ const POOL_STRIDE = 2;
 const POOL_WIDTH = INPUT_WIDTH / POOL_STRIDE;
 const POOL_HEIGHT = INPUT_HEIGHT / POOL_STRIDE;
 
+function encodeUniform(entries) {
+  const buffer = new ArrayBuffer(entries.length * 4);
+  const view = new DataView(buffer);
+  for (let i = 0; i < entries.length; i += 1) {
+    const entry = entries[i];
+    const type = Array.isArray(entry) ? entry[0] : entry.type;
+    const value = Array.isArray(entry) ? entry[1] : entry.value;
+    const offset = i * 4;
+    if (type === 'u32') {
+      view.setUint32(offset, value >>> 0, true);
+    } else if (type === 'f32') {
+      view.setFloat32(offset, Math.fround(value), true);
+    } else {
+      throw new Error(`Unsupported uniform field type "${type}"`);
+    }
+  }
+  return new Uint8Array(buffer);
+}
+
 export class CnnModel {
   constructor(device) {
     this.device = device;
@@ -375,7 +394,12 @@ export class CnnModel {
   }
 
   async updateSoftmaxUniform(batch) {
-    const info = new Float32Array([batch, this.classes, 1e-7, 0]);
+    const info = encodeUniform([
+      ['u32', batch],
+      ['u32', this.classes],
+      ['f32', 1e-7],
+      ['f32', 0],
+    ]);
     await writeBuffer(this.device, this.uniformBuffers.softmax, info);
   }
 
@@ -401,26 +425,39 @@ export class CnnModel {
   }
 
   async updateScaleUniform(buffer, size, factor) {
-    const info = new Float32Array([factor, size, 0, 0]);
+    const info = encodeUniform([
+      ['f32', factor],
+      ['u32', size],
+      ['f32', 0],
+      ['f32', 0],
+    ]);
     await writeBuffer(this.device, buffer, info);
   }
 
   async updateSgdUniform(buffer, size) {
-    const info = new Float32Array([this.learningRate, size, 0, 0]);
+    const info = encodeUniform([
+      ['f32', this.learningRate],
+      ['u32', size],
+      ['f32', 0],
+      ['f32', 0],
+    ]);
     await writeBuffer(this.device, buffer, info);
   }
 
   async updateAdamUniform(buffer, size) {
-    const info = new Float32Array([
-      this.learningRate,
-      this.beta1,
-      this.beta2,
-      this.epsilon,
-      1 - this.beta1,
-      1 - this.beta2,
-      this.beta1Power,
-      this.beta2Power,
-      size,
+    const info = encodeUniform([
+      ['f32', this.learningRate],
+      ['f32', this.beta1],
+      ['f32', this.beta2],
+      ['f32', this.epsilon],
+      ['f32', 1 - this.beta1],
+      ['f32', 1 - this.beta2],
+      ['f32', this.beta1Power],
+      ['f32', this.beta2Power],
+      ['u32', size],
+      ['u32', 0],
+      ['u32', 0],
+      ['u32', 0],
     ]);
     await writeBuffer(this.device, buffer, info);
   }
